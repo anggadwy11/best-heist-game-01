@@ -1,8 +1,10 @@
 // Vault Break — game flow: title, one vault room, caught and clean getaway.
-// Cross the room, grab GOLD, JEWELS and CASH, dodge the patrols, the
-// sweeping cameras and the blinking lasers, and leave by the green exit
-// before the alarm meter fills. Sneak (Shift) and the shadow pools make
-// you harder to spot; being seen is recoverable until the alarm is full.
+// Cross the room, grab GOLD, JEWELS, CASH and THE CROWN, dodge the
+// patrols, the sweeping cameras and the blinking lasers, and leave by
+// the green exit before the alarm meter fills. Sneak (Shift) and the
+// shadow pools make you harder to spot; being seen is recoverable until
+// the alarm is full. Fast grab chains pay a COMBO bonus, and finishing
+// with the alarm under 50% pays the GHOST bonus.
 //
 // Keys: WASD / arrows move, Shift sneak, P pause, R restart, Enter start.
 // ?shot=title|play|alarm|win stages a still scene for the screenshots
@@ -43,7 +45,27 @@ const state = {
   paused: false,
   laserHitAt: -10,
   alarmWarned: false,
+  particles: [],
+  combo: 0,
+  lastLootAt: -99,
+  maxAlarm: 0,
+  timeBonus: 0,
+  ghostBonus: 0,
+  comboBonus: 0,
 };
+
+function burst(x, y, color, n, speed, size) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const v = (0.3 + Math.random() * 0.7) * speed;
+    state.particles.push({
+      x, y,
+      vx: Math.cos(a) * v, vy: Math.sin(a) * v - 18,
+      life: 0.7 + Math.random() * 0.6,
+      color, size: size * (0.6 + Math.random() * 0.8),
+    });
+  }
+}
 
 function startHeist() {
   state.player.x = ROOM.start.x;
@@ -59,6 +81,13 @@ function startHeist() {
   state.paused = false;
   state.laserHitAt = -10;
   state.alarmWarned = false;
+  state.particles = [];
+  state.combo = 0;
+  state.lastLootAt = -99;
+  state.maxAlarm = 0;
+  state.timeBonus = 0;
+  state.ghostBonus = 0;
+  state.comboBonus = 0;
   state.mode = 'play';
 }
 
@@ -80,6 +109,12 @@ function inRect(x, y, r) { return x >= r.x && x <= r.x + r.w && y >= r.y && y <=
 function step(dt) {
   if (state.paused) return;
   state.time += dt;
+  // particles drift and fade in every mode, so the win screen celebrates
+  for (const pt of state.particles) {
+    pt.x += pt.vx * dt; pt.y += pt.vy * dt;
+    pt.vy += 55 * dt; pt.life -= dt;
+  }
+  state.particles = state.particles.filter((pt) => pt.life > 0);
   if (state.mode !== 'play') return;
   const solids = solidsOf(state.room);
   const p = state.player;
@@ -132,6 +167,8 @@ function step(dt) {
     if (pointOnLaser(p.x, p.y, laser, state.time) && state.time - state.laserHitAt > 1) {
       state.laserHitAt = state.time;
       state.alarm = Math.min(100, state.alarm + 22);
+      state.combo = 0;
+      burst(p.x, p.y, '#ff3b4e', 12, 90, 3);
       alarmSound();
       blip(180, 0.2, 'square', 0.05);
     }
@@ -139,26 +176,37 @@ function step(dt) {
 
   if (strongest > 0) state.alarm = Math.min(100, state.alarm + strongest * 88 * dt);
   else state.alarm = Math.max(0, state.alarm - 30 * dt);
+  state.maxAlarm = Math.max(state.maxAlarm, state.alarm);
   if (state.alarm >= 80 && !state.alarmWarned) { state.alarmWarned = true; alarmSound(); }
   if (state.alarm < 70) state.alarmWarned = false;
 
   if (state.alarm >= 100) {
+    burst(p.x, p.y, '#ff3b4e', 22, 130, 4);
     state.mode = 'caught';
     caughtSound();
     return;
   }
 
-  // loot and the exit
+  // loot: a fast grab chain builds a combo worth bonus cash
   for (const l of state.loot) {
     if (!l.taken && Math.hypot(p.x - l.x, p.y - l.y) < 26) {
       l.taken = true;
       state.lootTaken += 1;
-      state.score += l.value;
+      state.combo = state.time - state.lastLootAt < 9 ? state.combo + 1 : 1;
+      state.lastLootAt = state.time;
+      const bonus = (state.combo - 1) * 500;
+      state.comboBonus += bonus;
+      state.score += l.value + bonus;
+      burst(l.x, l.y, l.color, 16, 110, 3.5);
       pickupSound();
     }
   }
-  if (state.lootTaken >= 3 && inRect(p.x, p.y, state.room.exit)) {
-    state.score += Math.max(0, 5000 - Math.floor(state.time) * 20);
+  if (state.lootTaken >= state.loot.length && inRect(p.x, p.y, state.room.exit)) {
+    state.timeBonus = Math.max(0, 5000 - Math.floor(state.time) * 20);
+    state.ghostBonus = state.maxAlarm < 50 ? 3000 : 0;
+    state.score += state.timeBonus + state.ghostBonus;
+    burst(p.x, p.y - 10, '#4be38a', 26, 150, 4);
+    burst(p.x, p.y - 10, '#f0c44c', 20, 120, 3.5);
     state.mode = 'win';
     winSound();
   }
@@ -173,13 +221,15 @@ function frame() {
   }
   if (state.mode === 'title') {
     drawBanner(ctx, 'VAULT BREAK', [
-      'One room. Three loot piles. One way out.',
+      'One room. Four loot piles. One way out.',
       'Dodge the patrols, the sweeping cameras and the',
       'blinking lasers — fill the alarm and you are caught.',
       'Sneak (Shift) and hide in the shadow pools.',
+      'Chain fast grabs for a COMBO bonus; finish with the',
+      'alarm under 50% for the $3,000 GHOST bonus.',
       '',
       'WASD / arrows to move · Shift to sneak · P pause · R restart',
-      'Grab GOLD, JEWELS and CASH, then reach the green EXIT',
+      'Grab GOLD, JEWELS, CASH and THE CROWN, then reach the EXIT',
     ], '#f0c44c');
   } else if (state.mode === 'caught') {
     drawBanner(ctx, 'CAUGHT!', [
@@ -190,7 +240,9 @@ function frame() {
     ], '#ff5a3c');
   } else if (state.mode === 'win') {
     drawBanner(ctx, 'CLEAN GETAWAY', [
-      `All three loot piles, $${state.score.toLocaleString()} in ${Math.floor(state.time)}s —`,
+      `All four loot piles, $${state.score.toLocaleString()} in ${Math.floor(state.time)}s —`,
+      `time bonus $${state.timeBonus.toLocaleString()} · combo $${state.comboBonus.toLocaleString()}` +
+        (state.ghostBonus ? ` · GHOST bonus $${state.ghostBonus.toLocaleString()}` : ''),
       'and not a single guard can say who did it.',
       '',
       'Press Enter to run the heist again',
@@ -208,6 +260,7 @@ function stageShot(name) {
     state.guards[1].x = 310; state.guards[1].y = 460; state.guards[1].angle = -1.2;
     state.cameras[0].angle = 1.2;
     state.loot[0].taken = true; state.lootTaken = 1; state.score = 4200;
+    state.combo = 1;
     state.alarm = 22;
   }
   if (name === 'alarm') {
@@ -221,8 +274,12 @@ function stageShot(name) {
   }
   if (name === 'win') {
     state.loot.forEach((l) => { l.taken = true; });
-    state.lootTaken = 3; state.score = 14100; state.time = 58;
+    state.lootTaken = 4; state.combo = 4;
+    state.timeBonus = 3840; state.ghostBonus = 3000; state.comboBonus = 1500;
+    state.score = 29940; state.time = 58;
     state.player.x = 480; state.player.y = 550;
+    burst(480, 540, '#4be38a', 26, 150, 4);
+    burst(480, 540, '#f0c44c', 20, 120, 3.5);
     state.mode = 'win';
   }
   frame();

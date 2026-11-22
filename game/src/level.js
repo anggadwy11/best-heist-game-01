@@ -24,15 +24,26 @@ export const ROOM = {
     { x: 600, y: 240, w: 90, h: 70 },
     { x: 400, y: 430, w: 160, h: 60 },
   ],
+  // the red carpet runs from the entrance straight to the strongbox:
+  // the obvious path, and the most watched one
+  carpet: { x: 436, y: 36, w: 88, h: 500 },
+  props: [
+    { x: 44, y: 560, kind: 'plant' },
+    { x: 916, y: 560, kind: 'plant' },
+    { x: 44, y: 64, kind: 'plant' },
+    { x: 916, y: 64, kind: 'plant' },
+  ],
   loot: [
     { id: 'gold',   label: 'GOLD BARS',  value: 4200, x: 165, y: 148, taken: false, color: '#f0c44c' },
     { id: 'jewels', label: 'JEWELS',     value: 6800, x: 795, y: 148, taken: false, color: '#7fe3ff' },
     { id: 'cash',   label: 'CASH',       value: 3100, x: 480, y: 470, taken: false, color: '#7ee787' },
+    { id: 'crown',  label: 'THE CROWN',  value: 7500, x: 480, y: 130, taken: false, color: '#ff9ff3' },
   ],
   guards: [
     { x: 180, y: 205, waypoints: [{ x: 180, y: 205 }, { x: 780, y: 205 }], speed: 62 },
     { x: 310, y: 360, waypoints: [{ x: 310, y: 250 }, { x: 310, y: 500 }], speed: 54 },
     { x: 650, y: 360, waypoints: [{ x: 650, y: 500 }, { x: 650, y: 250 }], speed: 54 },
+    { x: 200, y: 520, waypoints: [{ x: 200, y: 520 }, { x: 760, y: 520 }], speed: 58 },
   ],
   cameras: [
     { x: 480, y: 78, base: Math.PI / 2, sweep: 0.9, speed: 0.55, range: 250 },
@@ -43,6 +54,9 @@ export const ROOM = {
     { x1: 180, y1: 352, x2: 780, y2: 352, period: 3.4, onTime: 2.0, phase: 0 },
     // vertical beam guarding the cash, offset phase so both are never on together
     { x1: 480, y1: 400, x2: 480, y2: 520, period: 3.4, onTime: 2.0, phase: 1.7 },
+    // side corridor beams guarding the west and east approaches
+    { x1: 165, y1: 215, x2: 165, y2: 420, period: 2.9, onTime: 1.7, phase: 0.8 },
+    { x1: 795, y1: 215, x2: 795, y2: 420, period: 2.9, onTime: 1.7, phase: 2.2 },
   ],
 };
 

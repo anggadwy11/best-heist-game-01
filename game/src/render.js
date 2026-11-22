@@ -22,6 +22,27 @@ export function drawScene(ctx, state) {
   for (let x = 0; x < 960; x += 48) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 600); ctx.stroke(); }
   for (let y = 0; y < 600; y += 48) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(960, y); ctx.stroke(); }
 
+  // the red carpet: the rich client's path, straight down the middle
+  if (room.carpet) {
+    ctx.fillStyle = 'rgba(122,26,38,0.55)';
+    ctx.fillRect(room.carpet.x, room.carpet.y, room.carpet.w, room.carpet.h);
+    ctx.strokeStyle = 'rgba(240,196,76,0.5)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(room.carpet.x, room.carpet.y, room.carpet.w, room.carpet.h);
+    ctx.lineWidth = 1;
+  }
+
+  // potted plants in the corners: pure decoration, pure cover story
+  for (const prop of room.props || []) {
+    if (prop.kind !== 'plant') continue;
+    ctx.fillStyle = '#5a4028';
+    ctx.fillRect(prop.x - 9, prop.y + 2, 18, 12);
+    ctx.fillStyle = '#2e7d46';
+    for (const [dx, dy, r] of [[-8, -4, 8], [8, -4, 8], [0, -12, 9], [-4, 2, 7], [5, 2, 7]]) {
+      ctx.beginPath(); ctx.arc(prop.x + dx, prop.y + dy, r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
   // shadow pools: safe dark ground
   for (const s of room.shadows) {
     ctx.fillStyle = 'rgba(8,10,18,0.85)';
@@ -44,7 +65,7 @@ export function drawScene(ctx, state) {
 
   // exit: green gate at the bottom, labelled
   const e = room.exit;
-  const exitOpen = state.lootTaken >= 3;
+  const exitOpen = state.lootTaken >= state.loot.length;
   ctx.fillStyle = exitOpen ? '#1f7a44' : '#23402e';
   ctx.fillRect(e.x, e.y, e.w, e.h);
   ctx.strokeStyle = exitOpen ? '#4be38a' : '#5a7a68';
@@ -55,17 +76,23 @@ export function drawScene(ctx, state) {
   ctx.textAlign = 'center';
   ctx.fillText(exitOpen ? 'EXIT — GO!' : 'EXIT (LOCKED)', e.x + e.w / 2, e.y + 28);
 
-  // loot piles
+  // loot piles: a pulsing glow, the prize and its price on show
   for (const l of state.loot) {
     if (l.taken) continue;
+    const pulse = 13 + Math.sin(state.time * 4 + l.x) * 2.5;
     ctx.fillStyle = l.color;
-    ctx.beginPath(); ctx.arc(l.x, l.y, 13, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.25;
+    ctx.beginPath(); ctx.arc(l.x, l.y, pulse + 9, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.beginPath(); ctx.arc(l.x, l.y, pulse, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#0b0e14';
     ctx.font = 'bold 13px sans-serif';
     ctx.fillText('$', l.x, l.y + 5);
     ctx.fillStyle = '#e8ecf4';
     ctx.font = 'bold 11px sans-serif';
-    ctx.fillText(l.label, l.x, l.y - 20);
+    ctx.fillText(l.label, l.x, l.y - 24);
+    ctx.fillStyle = l.color;
+    ctx.fillText(`$${l.value.toLocaleString()}`, l.x, l.y + 30);
   }
 
   // lasers
@@ -110,13 +137,15 @@ export function drawScene(ctx, state) {
     ctx.stroke();
     if (g.alert > 40) {
       ctx.fillStyle = '#ff5a3c';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.fillText('!', g.x, g.y - 18);
+      ctx.font = 'bold 17px sans-serif';
+      ctx.fillText('!', g.x, g.y - 20);
     }
   }
 
-  // the thief: black coat, gold mask
+  // the thief: black coat, gold mask, and a swag bag that grows with the haul
   const p = state.player;
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.beginPath(); ctx.ellipse(p.x, p.y + 12, 12, 4, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#111';
   ctx.beginPath(); ctx.arc(p.x, p.y, 11, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = '#f0c44c';
@@ -124,10 +153,35 @@ export function drawScene(ctx, state) {
   ctx.beginPath(); ctx.arc(p.x, p.y, 11, 0, Math.PI * 2); ctx.stroke();
   ctx.fillStyle = '#f0c44c';
   ctx.fillRect(p.x - 6, p.y - 3, 12, 5);
+  if (state.lootTaken > 0) {
+    ctx.fillStyle = '#8a6d2f';
+    ctx.beginPath(); ctx.arc(p.x - 11, p.y + 8, 5 + state.lootTaken, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f0c44c';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillText('$', p.x - 11, p.y + 11);
+  }
   if (p.crouch) {
     ctx.fillStyle = '#f0c44c';
     ctx.font = '10px sans-serif';
     ctx.fillText('sneak', p.x, p.y - 16);
+  }
+
+  // particles: pickup sparkles, laser burns, getaway confetti
+  for (const pt of state.particles || []) {
+    ctx.globalAlpha = Math.max(0, Math.min(1, pt.life * 2));
+    ctx.fillStyle = pt.color;
+    ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // the alarm closes in: a red pulse at the edge of vision when it runs hot
+  if (state.alarm > 55 && state.mode === 'play') {
+    const heat = (state.alarm - 55) / 45;
+    const pulse = 0.16 + 0.12 * Math.sin(state.time * 9);
+    ctx.strokeStyle = `rgba(255,40,50,${(heat * pulse + 0.08).toFixed(3)})`;
+    ctx.lineWidth = 26;
+    ctx.strokeRect(13, 13, 934, 574);
+    ctx.lineWidth = 1;
   }
 }
 
@@ -150,13 +204,17 @@ export function drawHud(ctx, state) {
   ctx.font = 'bold 12px sans-serif';
   ctx.fillText(`ALARM ${Math.round(state.alarm)}%`, 378, 22);
   ctx.fillStyle = '#f0c44c';
-  ctx.fillText(`LOOT ${state.lootTaken}/3  •  $${state.score.toLocaleString()}`, 520, 22);
+  ctx.fillText(`LOOT ${state.lootTaken}/${state.loot.length}  •  $${state.score.toLocaleString()}`, 520, 22);
+  if (state.combo > 1) {
+    ctx.fillStyle = '#ff8a3c';
+    ctx.fillText(`COMBO x${state.combo}`, 700, 22);
+  }
   ctx.fillStyle = '#9db1d4';
-  ctx.fillText(`TIME ${Math.floor(state.time)}s`, 760, 22);
+  ctx.fillText(`TIME ${Math.floor(state.time)}s`, 820, 22);
   ctx.fillStyle = '#9db1d4';
   ctx.font = '12px sans-serif';
-  const obj = state.lootTaken < 3
-    ? 'Grab all 3 loot piles, then reach the green EXIT'
+  const obj = state.lootTaken < state.loot.length
+    ? `Grab all ${state.loot.length} loot piles, then reach the green EXIT`
     : 'All loot grabbed — reach the green EXIT!';
   ctx.fillText(obj, 12, 52);
 }
